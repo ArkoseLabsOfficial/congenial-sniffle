@@ -100,7 +100,10 @@ class JaxeInterp {
 				if (superclass != "") {
 					var cls = Type.resolveClass(superclass);
 					if (cls == null && imports.exists(superclass)) cls = imports.get(superclass);
-					if (cls != null) extendedObject = Type.createInstance(cls, []);
+					if (cls != null) {
+						extendedObject = Type.createInstance(cls, []);
+						try { Reflect.setProperty(extendedObject, "scriptInterp", this); } catch(e:Dynamic) {}
+					}
 				}
 				var classObj:Dynamic = {}; vars.set(name, classObj);
 				for (m in members) {
@@ -150,8 +153,8 @@ class JaxeInterp {
 				}
 				return Type.createInstance(tCls, args.map(eval));
 			case ENewArray(cls, size):
-				var s:Int = cast eval(size);
-				var arr = new Array<Dynamic>();
+				var s:Int = Std.int(cast eval(size));
+				var arr = new Array<Any>();
 				for(i in 0...s) arr.push(null);
 				return arr;
 			case EPostfix(expr, op):
@@ -164,8 +167,7 @@ class JaxeInterp {
 						else if (scriptObject != null && (Reflect.hasField(scriptObject, id) || Reflect.getProperty(scriptObject, id) != null)) Reflect.setProperty(scriptObject, id, newVal);
 					case EArrayAccess(arr, idx): 
 						var tArr:Dynamic = eval(arr);
-						if (Std.isOfType(tArr, Array)) (tArr : Array<Dynamic>)[Std.int(cast eval(idx))] = newVal;
-						else Reflect.setProperty(tArr, Std.string(eval(idx)), newVal);
+						try { tArr[Std.int(cast eval(idx))] = newVal; } catch(e:Dynamic) { Reflect.setProperty(tArr, Std.string(eval(idx)), newVal); }
 					case EField(obj, f): Reflect.setProperty(eval(obj), f, newVal);
 					default:
 				}
@@ -206,9 +208,13 @@ class JaxeInterp {
 			case EArrayDecl(exprs): return exprs.map(eval);
 			case EArrayAccess(target, index): 
 				var tArr:Dynamic = eval(target);
+				var idx:Dynamic = eval(index);
 				if (tArr != null) {
-					if (Std.isOfType(tArr, Array)) return (tArr : Array<Dynamic>)[Std.int(cast eval(index))];
-					return Reflect.getProperty(tArr, Std.string(eval(index)));
+					try {
+						var res = tArr[Std.int(cast idx)];
+						if (res != null) return res;
+					} catch(e:Dynamic) {}
+					return Reflect.getProperty(tArr, Std.string(idx));
 				}
 				return null;
 			case EUnop(op, expr): if (op == "!") return !eval(expr); return null;
@@ -225,12 +231,7 @@ class JaxeInterp {
 						var tArr:Dynamic = eval(arrTarget);
 						var idx:Dynamic = eval(idxTarget);
 						if (tArr != null) {
-							if (Std.isOfType(tArr, Array)) {
-								var a:Array<Dynamic> = cast tArr;
-								a[Std.int(cast idx)] = value;
-							} else {
-								Reflect.setProperty(tArr, Std.string(idx), value);
-							}
+							try { tArr[Std.int(cast idx)] = value; } catch(e:Dynamic) { Reflect.setProperty(tArr, Std.string(idx), value); }
 						}
 					case EField(EThis, id):
 						if (extendedObject != null && (Reflect.hasField(extendedObject, id) || Reflect.getProperty(extendedObject, id) != null)) Reflect.setProperty(extendedObject, id, value);
